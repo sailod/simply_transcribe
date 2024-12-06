@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "simply-transcribe"
+version = "0.1.0"
+description = ""
+authors = ["Roi <roezairi@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pillow = "11.0.0"
+pyaudio = "0.2.14"
+pyperclip = "1.9.0"
+requests = "2.32.3"
+python-dotenv = "^1.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
