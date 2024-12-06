@@ -110,6 +110,10 @@ def main():
     if transcribed_text:
         pyperclip.copy(transcribed_text)
         print("Transcribed text copied to clipboard.")
+    # Clean up the audio file
+    if os.path.exists(WAVE_OUTPUT_FILENAME):
+        os.remove(WAVE_OUTPUT_FILENAME)
+        print(f"Deleted temporary audio file: {WAVE_OUTPUT_FILENAME}")
 
 if __name__ == "__main__":
     main()
