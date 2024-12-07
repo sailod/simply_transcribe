@@ -10,7 +10,9 @@ load_dotenv()
 
 # Constants
 WAVE_OUTPUT_FILENAME = "output.wav"
-API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
+MODEL_NAME = "openai/whisper-large-v3-turbo"
+# MODEL_NAME = "openai/whisper-large-v3"
+API_URL = f"https://api-inference.huggingface.co/models/{MODEL_NAME}"
 API_TOKEN = os.getenv('HUGGINGFACE_API_KEY')
 
 class RecordingGUI:
