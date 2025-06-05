@@ -82,6 +82,10 @@ arecord -D plughw:0,6 -f S32_LE -r 48000 -c 2 test.wav
    
    # Optional: Enable developer tools for debugging
    DEBUG_DEVTOOLS=false
+   
+   # Optional: Auto-close app after successful transcription (defaults to true for hotkey workflows)
+   # Set to 'false' to disable auto-close behavior
+   AUTO_CLOSE_AFTER_TRANSCRIPTION=true
    ```
 
 ## Getting API Keys
@@ -114,14 +118,63 @@ DEBUG_DEVTOOLS=true npm start
 ```
 
 ### Using the App
+
+**Standard Mode (manual control):**
 1. Click **"Start Recording"** to begin audio capture
 2. Speak into your microphone
 3. Click **"Stop Recording"** to end recording and start transcription
 4. Wait for transcription to complete
 5. The transcribed text will be automatically copied to your clipboard
 
+**Hotkey Mode (streamlined workflow):**
+1. Launch the app (recording starts automatically)
+2. Speak into your microphone
+3. Click **"Stop Recording"** or use the UI to stop
+4. Wait for transcription to complete
+5. App automatically closes after copying text to clipboard
+
 ### Keyboard Shortcuts
 - **Ctrl+V** (or **Cmd+V** on macOS): Paste the transcribed text anywhere
+
+## Hotkey Workflow Setup
+
+For power users who want to integrate transcription into their workflow using global hotkeys:
+
+### **Quick Transcription Workflow:**
+1. Set up a global hotkey to launch the app (auto-close is enabled by default)
+2. **Streamlined workflow:** Hotkey → App opens & starts recording → Speak → Stop recording → Auto-transcribe → Auto-close → Paste anywhere
+
+### **To disable auto-close (for manual control):**
+```bash
+# In your .env file:
+AUTO_CLOSE_AFTER_TRANSCRIPTION=false
+```
+
+### **Setting Up Global Hotkeys (Ubuntu/GNOME):**
+
+```bash
+# Method 1: Using gnome-settings (GUI)
+gnome-control-center keyboard
+
+# Method 2: Using gsettings (CLI)
+# Step 1: Add a new custom keybinding slot
+gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']"
+
+# Step 2: Set the name for this keybinding
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ name 'Quick Transcribe'
+
+# Step 3: Set your full command with environment variables
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ command 'USE_OPENAI_API=true OPENAI_API_TOKEN="XXXX" /path/to/app/simply_transcribe'
+
+# Step 4: Set the hotkey to Super+[
+gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ binding '<Super>bracketleft'
+```
+
+### **Workflow Benefits:**
+- **Super fast:** Press hotkey → speak → get text in clipboard
+- **No manual interaction:** Fully automated workflow
+- **Hands-free:** Perfect for dictation while typing in other apps
+- **Universal:** Works with any application that accepts pasted text
 
 ## Building for Production
 

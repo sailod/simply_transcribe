@@ -37,6 +37,34 @@ function createWindow() {
   }
 
   mainWindow.loadFile('index.html');
+  
+  // Auto-start recording when app starts (useful for hotkey workflows)
+  mainWindow.webContents.once('did-finish-load', () => {
+    // Small delay to ensure UI is ready
+    setTimeout(async () => {
+      try {
+        fileStream = fs.createWriteStream('recording.wav', { encoding: 'binary' });
+
+        micInstance = mic({
+          rate: '48000',
+          channels: '2',
+          fileType: 'wav',
+          device: 'plughw:0,6'
+        });
+        
+        micInputStream = micInstance.getAudioStream();
+        micInputStream.pipe(fileStream);
+        micInstance.start();
+        
+        // Notify renderer that recording started automatically
+        mainWindow.webContents.send('recording-started-auto');
+        mainWindow.webContents.send('status-update', 'Recording started automatically...');
+      } catch (error) {
+        console.error('Auto-start recording failed:', error);
+        mainWindow.webContents.send('status-update', 'Auto-start recording failed. Click Start Recording to try again.');
+      }
+    }, 500);
+  });
 }
 
 // Helper functions
@@ -157,6 +185,13 @@ ipcMain.handle('stop-recording', async () => {
     clipboard.writeText(transcribedText);
     cleanupFiles([inputFile, outputFile]);
     mainWindow.webContents.send('status-update', 'Transcription copied to clipboard!');
+    
+    // Auto-close app if environment variable is set (useful for hotkey workflows)
+    if (process.env.AUTO_CLOSE_AFTER_TRANSCRIPTION !== 'false') {
+      setTimeout(() => {
+        app.quit();
+      }, 2000); // Wait 2 seconds to show the success message
+    }
     
     return true;
   } catch (error) {

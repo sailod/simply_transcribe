@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld(
         stopRecording: () => ipcRenderer.invoke('stop-recording'),
         onStatusUpdate: (callback) => {
             ipcRenderer.on('status-update', (event, ...args) => callback(...args));
+        },
+        onRecordingStartedAuto: (callback) => {
+            ipcRenderer.on('recording-started-auto', (event, ...args) => callback(...args));
         }
     }
 ); 
