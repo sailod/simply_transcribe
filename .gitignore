@@ -1,1 +1,6 @@
 .env
+src/node_modules
+electron-transcribe/dist
+electron-transcribe/node_modules
+simply_transcribe_rs
+node_modules/mic
