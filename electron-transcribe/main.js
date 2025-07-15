@@ -49,7 +49,7 @@ function createWindow() {
           rate: '48000',
           channels: '2',
           fileType: 'wav',
-          device: 'plughw:0,6'
+          device: 'default'
         });
         
         micInputStream = micInstance.getAudioStream();
@@ -127,7 +127,7 @@ ipcMain.handle('start-recording', async () => {
       rate: '48000',
       channels: '2',
       fileType: 'wav',
-      device: 'plughw:0,6'
+      device: 'default'
     });
     
     micInputStream = micInstance.getAudioStream();
