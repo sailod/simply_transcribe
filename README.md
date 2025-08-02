@@ -29,5 +29,7 @@ This workflow allows you to quickly convert speech to text without interrupting 
 
 
 
-https://github.com/user-attachments/assets/092fc244-48eb-4245-beef-fd8ec767539d
+
+https://github.com/user-attachments/assets/482448f6-e253-4dba-bf32-52117424a517
+
 
