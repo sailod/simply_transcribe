@@ -107,7 +107,7 @@ const WHISPER_MODELS = {
 
 // Local model options: Choose from WHISPER_MODELS above
 // Default to tiny.en for fastest initial experience
-const LOCAL_MODEL = process.env.LOCAL_MODEL || 'Xenova/whisper-tiny.en';
+const LOCAL_MODEL = process.env.LOCAL_MODEL || 'Xenova/whisper-base.en';
 
 // Validate and log model info
 if (TRANSCRIPTION_PROVIDER === 'local') {
@@ -188,11 +188,13 @@ function cleanupFiles(files) {
 function convertAudio(input, output) {
   return new Promise((resolve, reject) => {
     const cmd = `ffmpeg -y -i ${input} -ac 1 -ar 16000 -sample_fmt s16 ${output}`;
-    exec(cmd, (error, stdout, stderr) => {
+    // Increase maxBuffer for longer audio files (default is 1MB, we need more for 3+ minute recordings)
+    exec(cmd, { maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         console.error('Audio conversion failed:', error.message);
         reject(error);
       } else {
+        console.log(`Audio converted: ${input} → ${output}`);
         resolve();
       }
     });
@@ -266,12 +268,56 @@ async function transcribeWithLocalWhisper(audioFile) {
       float32Audio[i] = audioData[i] / maxValue;
     }
     
-    // Transcribe the audio data
-    console.log('Transcribing audio...');
-    const result = await transcriber(float32Audio);
+    const durationSeconds = float32Audio.length / 16000;
+    console.log(`Audio: ${float32Audio.length} samples (${durationSeconds.toFixed(1)} seconds)`);
     
-    console.log('Transcription completed');
-    return result.text;
+    // Find min/max without stack overflow (can't spread huge arrays)
+    let min = float32Audio[0], max = float32Audio[0];
+    for (let i = 1; i < float32Audio.length; i++) {
+      if (float32Audio[i] < min) min = float32Audio[i];
+      if (float32Audio[i] > max) max = float32Audio[i];
+    }
+    console.log(`Audio range: min=${min.toFixed(3)}, max=${max.toFixed(3)}`);
+    
+    // For longer audio (>30s), process in chunks to ensure complete transcription
+    // This prevents the model from skipping content in longer recordings
+    let transcribedText = '';
+    
+    if (durationSeconds <= 30) {
+      // Short audio - process in one go
+      console.log('Transcribing audio (single pass)...');
+      const result = await transcriber(float32Audio);
+      transcribedText = result.text || '';
+      console.log('Transcription completed');
+    } else {
+      // Long audio - process in 30-second overlapping chunks
+      console.log(`Transcribing long audio (${durationSeconds.toFixed(1)}s) in chunks...`);
+      const chunkSize = 30 * 16000; // 30 seconds worth of samples
+      const overlapSize = 2 * 16000; // 2 seconds overlap
+      const chunks = [];
+      
+      for (let i = 0; i < float32Audio.length; i += (chunkSize - overlapSize)) {
+        const chunkEnd = Math.min(i + chunkSize, float32Audio.length);
+        const chunk = float32Audio.slice(i, chunkEnd);
+        const chunkNum = Math.floor(i / (chunkSize - overlapSize)) + 1;
+        const totalChunks = Math.ceil(float32Audio.length / (chunkSize - overlapSize));
+        
+        console.log(`Processing chunk ${chunkNum}/${totalChunks} (${(chunk.length/16000).toFixed(1)}s)...`);
+        const result = await transcriber(chunk);
+        
+        if (result.text) {
+          chunks.push(result.text.trim());
+        }
+      }
+      
+      transcribedText = chunks.join(' ');
+      console.log(`Transcription completed: ${chunks.length} chunks processed`);
+    }
+    
+    console.log(`Result: ${transcribedText.length} characters`);
+    console.log(`Text preview: ${transcribedText.substring(0, 100)}...`);
+    
+    return transcribedText;
   } catch (error) {
     console.error('Local transcription error:', error);
     throw new Error(`Local transcription failed: ${error.message}`);

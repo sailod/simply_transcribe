@@ -5,4 +5,4 @@
 export LOCAL_MODEL="Xenova/whisper-tiny.en"
 export USE_OPENAI_API=false
 export OPENAI_API_TOKEN="REPLACE_WITH_YOUR_OPENAI_API_TOKEN"
-/home/roi/apps/simply_transcribe/squashfs-root/AppRun
+./squashfs-root/AppRun

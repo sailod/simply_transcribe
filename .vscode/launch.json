@@ -10,7 +10,7 @@
       "runtimeArgs": ["start"],
       "env": {
         "TRANSCRIPTION_PROVIDER": "local",
-        "LOCAL_MODEL": "Xenova/whisper-tiny.en",
+        "LOCAL_MODEL": "Xenova/whisper-base.en",
         "DEBUG_DEVTOOLS": "true",
         "AUTO_CLOSE_AFTER_TRANSCRIPTION": "false"
       },
