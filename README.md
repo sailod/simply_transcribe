@@ -26,3 +26,10 @@ For the most efficient workflow with this tool, follow these steps:
 - No need to manually copy or save - it's ready to use immediately
 
 This workflow allows you to quickly convert speech to text without interrupting your work process. Perfect for note-taking, drafting emails, or any situation where typing might slow you down. ✨
+
+
+
+
+https://github.com/user-attachments/assets/482448f6-e253-4dba-bf32-52117424a517
+
+
