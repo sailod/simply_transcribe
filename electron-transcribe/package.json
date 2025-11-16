@@ -29,6 +29,11 @@
   },
   "build": {
     "appId": "com.electron.transcribe",
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sharp/**/*",
+      "**/node_modules/@xenova/**/*"
+    ],
     "mac": {
       "category": "public.app-category.utilities"
     },

@@ -18,8 +18,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_TOKEN;
 const USE_OPENAI_API = process.env.USE_OPENAI_API === 'true';
 
 // New configuration: Transcription provider: 'local', 'openai', 'huggingface'
-// Defaults to 'huggingface' to maintain backward compatibility
-const TRANSCRIPTION_PROVIDER = process.env.TRANSCRIPTION_PROVIDER || 'huggingface';
+const TRANSCRIPTION_PROVIDER = process.env.TRANSCRIPTION_PROVIDER || 'local';
 
 // Local Whisper Models Reference
 // Choose based on your needs: speed vs accuracy vs memory
