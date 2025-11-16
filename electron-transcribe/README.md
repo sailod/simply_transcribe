@@ -1,14 +1,19 @@
 # Electron Transcribe
 
-A simple desktop app for recording audio and transcribing it to text using OpenAI Whisper or Hugging Face APIs. The transcribed text is automatically copied to your clipboard.
+A simple desktop app for recording audio and transcribing it to text using **local** Whisper AI or cloud APIs. The transcribed text is automatically copied to your clipboard.
 
 ## Features
 
 - 🎙️ Real-time audio recording
-- 🤖 AI-powered transcription (OpenAI Whisper or Hugging Face)
+- 🤖 AI-powered transcription with **three options**:
+  - **Local Whisper** (transformers.js) - Runs on your machine, completely FREE! ⭐
+  - **OpenAI Whisper API** - Cloud-based, high quality, paid
+  - **Hugging Face API** - Cloud-based, free tier available
 - 📋 Automatic clipboard integration
 - 🖥️ Cross-platform desktop app (Linux, Windows, macOS)
 - 🔒 Secure sandboxed environment
+- 🌍 Multi-language support
+- 💾 No Python required!
 
 ## System Dependencies
 
@@ -68,40 +73,97 @@ arecord -D plughw:0,6 -f S32_LE -r 48000 -c 2 test.wav
 
 3. **Configure environment variables**
    
-   Create a `.env` file in the project root:
+   Copy the example file and customize:
    ```bash
-   # Choose ONE API service:
+   cp .env.example .env
+   # Then edit .env with your preferred settings
+   ```
    
-   # Option 1: OpenAI Whisper API (recommended)
-   USE_OPENAI_API=true
+   Or create a `.env` file manually:
+   ```bash
+   # Option 1: Local Whisper (RECOMMENDED - FREE!)
+   TRANSCRIPTION_PROVIDER=local
+   LOCAL_MODEL=Xenova/whisper-tiny.en
+   
+   # Option 2: OpenAI API (paid)
+   TRANSCRIPTION_PROVIDER=openai
    OPENAI_API_TOKEN=your_openai_api_key_here
    
-   # Option 2: Hugging Face API (free alternative)
-   USE_OPENAI_API=false
+   # Option 3: Hugging Face API (free tier)
+   TRANSCRIPTION_PROVIDER=huggingface
    HUGGINGFACE_API_KEY=your_huggingface_api_key_here
    
-   # Optional: Enable developer tools for debugging
+   # Optional settings
    DEBUG_DEVTOOLS=false
-   
-   # Optional: Auto-close app after successful transcription (defaults to true for hotkey workflows)
-   # Set to 'false' to disable auto-close behavior
    AUTO_CLOSE_AFTER_TRANSCRIPTION=true
    ```
 
-## Getting API Keys
+## Transcription Options
 
-### OpenAI API (Recommended)
+### Option 1: Local Whisper (transformers.js) ⭐ **RECOMMENDED**
+
+**Why this is great:**
+- ✅ Completely **FREE**
+- ✅ Works **offline** - no internet required
+- ✅ **No API keys** needed
+- ✅ Full **privacy** - audio never leaves your machine
+- ✅ **No Python** - pure JavaScript implementation
+- ✅ Models download automatically on first use
+
+**Setup:**
+```bash
+# In .env file:
+TRANSCRIPTION_PROVIDER=local
+LOCAL_MODEL=Xenova/whisper-tiny.en
+```
+
+**Available models:**
+| Model | Size | Speed | Accuracy | Languages |
+|-------|------|-------|----------|-----------|
+| `Xenova/whisper-tiny.en` | ~40MB | ⚡⚡⚡ Fastest | Good | English only |
+| `Xenova/whisper-tiny` | ~75MB | ⚡⚡⚡ Fast | Good | Multilingual |
+| `Xenova/whisper-base.en` | ~75MB | ⚡⚡ Fast | Better | English only |
+| `Xenova/whisper-base` | ~145MB | ⚡⚡ Fast | Better | Multilingual |
+| `Xenova/whisper-small.en` | ~245MB | ⚡ Medium | Best | English only |
+| `Xenova/whisper-small` | ~485MB | ⚡ Slower | Best | Multilingual |
+
+**Note:** Models are downloaded automatically on first use and cached locally.
+
+### Option 2: OpenAI API
+
+**When to use:**
+- Need highest accuracy
+- Don't want to wait for model downloads
+- Have fast internet connection
+
+**Setup:**
 1. Visit [OpenAI API Platform](https://platform.openai.com/)
-2. Create an account and add billing information
-3. Generate an API key from the API Keys section
-4. Cost: ~$0.006 per minute of audio
+2. Create account and add billing
+3. Generate API key
+4. Add to `.env`: 
+   ```bash
+   TRANSCRIPTION_PROVIDER=openai
+   OPENAI_API_TOKEN=your_key_here
+   ```
 
-### Hugging Face API (Free Alternative)
+**Cost:** ~$0.006 per minute of audio
+
+### Option 3: Hugging Face API
+
+**When to use:**
+- Want cloud-based transcription
+- Don't want to pay
+- Have patience for rate limits
+
+**Setup:**
 1. Visit [Hugging Face](https://huggingface.co/)
-2. Create a free account
-3. Go to Settings → Access Tokens
-4. Create a new token with "Read" permissions
-5. Note: May have rate limits and slower processing
+2. Create free account
+3. Settings → Access Tokens → Create token
+4. Add to `.env`:
+   ```bash
+   TRANSCRIPTION_PROVIDER=huggingface
+   HUGGINGFACE_API_KEY=your_key_here
+   ```
 
 ## Usage
 

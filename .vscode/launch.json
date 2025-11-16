@@ -1,0 +1,87 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Electron: Main (Local Whisper)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/electron-transcribe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "env": {
+        "TRANSCRIPTION_PROVIDER": "local",
+        "LOCAL_MODEL": "Xenova/whisper-tiny.en",
+        "DEBUG_DEVTOOLS": "true",
+        "AUTO_CLOSE_AFTER_TRANSCRIPTION": "false"
+      },
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Electron: Main (Local Whisper - Base Model)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/electron-transcribe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "env": {
+        "TRANSCRIPTION_PROVIDER": "local",
+        "LOCAL_MODEL": "Xenova/whisper-base.en",
+        "DEBUG_DEVTOOLS": "true",
+        "AUTO_CLOSE_AFTER_TRANSCRIPTION": "false"
+      },
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Electron: Main (OpenAI)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/electron-transcribe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "env": {
+        "TRANSCRIPTION_PROVIDER": "openai",
+        "OPENAI_API_TOKEN": "${env:OPENAI_API_TOKEN}",
+        "DEBUG_DEVTOOLS": "true",
+        "AUTO_CLOSE_AFTER_TRANSCRIPTION": "false"
+      },
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Electron: Main (Hugging Face)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/electron-transcribe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "env": {
+        "TRANSCRIPTION_PROVIDER": "huggingface",
+        "HUGGINGFACE_API_KEY": "${env:HUGGINGFACE_API_KEY}",
+        "DEBUG_DEVTOOLS": "true",
+        "AUTO_CLOSE_AFTER_TRANSCRIPTION": "false"
+      },
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Electron: Main (from .env file)",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/electron-transcribe",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "envFile": "${workspaceFolder}/electron-transcribe/.env",
+      "outputCapture": "std",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": []
+}
+
