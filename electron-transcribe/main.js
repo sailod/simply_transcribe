@@ -1,4 +1,11 @@
 const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
+
+// Disable GPU acceleration to prevent system-wide freezes on Linux/GNOME/Wayland.
+// Chromium's VSync query (GetVSyncParametersIfAvailable()) fragments GPU contexts when it
+// fails, which combined with rapid spawn/exit cycles saturates the compositor's frame-sync
+// queue. This must execute before app.whenReady() and any BrowserWindow creation.
+app.disableHardwareAcceleration();
+
 const path = require('path');
 const mic = require('mic');
 const fs = require('fs');
@@ -268,16 +275,35 @@ async function transcribeWithLocalWhisper(audioFile) {
       float32Audio[i] = audioData[i] / maxValue;
     }
     
-    const durationSeconds = float32Audio.length / 16000;
-    console.log(`Audio: ${float32Audio.length} samples (${durationSeconds.toFixed(1)} seconds)`);
-    
-    // Find min/max without stack overflow (can't spread huge arrays)
+    // Find min/max to check audio levels
     let min = float32Audio[0], max = float32Audio[0];
     for (let i = 1; i < float32Audio.length; i++) {
       if (float32Audio[i] < min) min = float32Audio[i];
       if (float32Audio[i] > max) max = float32Audio[i];
     }
+    
+    const durationSeconds = float32Audio.length / 16000;
+    console.log(`Audio: ${float32Audio.length} samples (${durationSeconds.toFixed(1)} seconds)`);
     console.log(`Audio range: min=${min.toFixed(3)}, max=${max.toFixed(3)}`);
+    
+    // Normalize audio levels if too quiet (common issue with some microphones)
+    // Whisper works best with audio levels around -0.5 to 0.5
+    const peakLevel = Math.max(Math.abs(min), Math.abs(max));
+    if (peakLevel < 0.1) {
+      console.log(`⚠ Audio is very quiet (peak: ${peakLevel.toFixed(3)}). Amplifying...`);
+      const amplificationFactor = 0.5 / peakLevel; // Target peak of 0.5
+      for (let i = 0; i < float32Audio.length; i++) {
+        float32Audio[i] = Math.max(-1, Math.min(1, float32Audio[i] * amplificationFactor));
+      }
+      // Recalculate after amplification
+      min = float32Audio[0];
+      max = float32Audio[0];
+      for (let i = 1; i < float32Audio.length; i++) {
+        if (float32Audio[i] < min) min = float32Audio[i];
+        if (float32Audio[i] > max) max = float32Audio[i];
+      }
+      console.log(`After amplification: min=${min.toFixed(3)}, max=${max.toFixed(3)}`);
+    }
     
     // For longer audio (>30s), process in chunks to ensure complete transcription
     // This prevents the model from skipping content in longer recordings
@@ -287,7 +313,8 @@ async function transcribeWithLocalWhisper(audioFile) {
       // Short audio - process in one go
       console.log('Transcribing audio (single pass)...');
       const result = await transcriber(float32Audio);
-      transcribedText = result.text || '';
+      console.log('Raw result:', JSON.stringify(result, null, 2));
+      transcribedText = result.text || result || '';
       console.log('Transcription completed');
     } else {
       // Long audio - process in 30-second overlapping chunks
@@ -295,27 +322,118 @@ async function transcribeWithLocalWhisper(audioFile) {
       const chunkSize = 30 * 16000; // 30 seconds worth of samples
       const overlapSize = 2 * 16000; // 2 seconds overlap
       const chunks = [];
+      const chunkStep = chunkSize - overlapSize;
+      const totalChunks = Math.ceil((float32Audio.length - overlapSize) / chunkStep);
       
-      for (let i = 0; i < float32Audio.length; i += (chunkSize - overlapSize)) {
+      // Process chunks with retry logic for reliability
+      for (let i = 0; i < float32Audio.length; i += chunkStep) {
+        const chunkStart = i;
         const chunkEnd = Math.min(i + chunkSize, float32Audio.length);
-        const chunk = float32Audio.slice(i, chunkEnd);
-        const chunkNum = Math.floor(i / (chunkSize - overlapSize)) + 1;
-        const totalChunks = Math.ceil(float32Audio.length / (chunkSize - overlapSize));
+        const chunk = float32Audio.slice(chunkStart, chunkEnd);
+        const chunkNum = Math.floor(i / chunkStep) + 1;
+        const chunkDuration = chunk.length / 16000;
+        const chunkStartTime = chunkStart / 16000;
+        const chunkEndTime = chunkEnd / 16000;
         
-        console.log(`Processing chunk ${chunkNum}/${totalChunks} (${(chunk.length/16000).toFixed(1)}s)...`);
-        const result = await transcriber(chunk);
+        console.log(`\nChunk ${chunkNum}/${totalChunks}: ${chunkStartTime.toFixed(1)}s - ${chunkEndTime.toFixed(1)}s (${chunkDuration.toFixed(1)}s)`);
         
-        if (result.text) {
-          chunks.push(result.text.trim());
+        // Retry logic: try up to 3 times per chunk
+        let chunkText = '';
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts && !chunkText.trim()) {
+          attempts++;
+          try {
+            console.log(`  Attempt ${attempts}/${maxAttempts}...`);
+            const result = await transcriber(chunk);
+            
+            chunkText = result.text || result || '';
+            if (chunkText.trim()) {
+              chunks.push(chunkText.trim());
+              console.log(`  ✓ Success: "${chunkText.substring(0, 50)}${chunkText.length > 50 ? '...' : ''}"`);
+              break;
+            } else {
+              console.log(`  ⚠ Empty result (attempt ${attempts})`);
+              if (attempts < maxAttempts) {
+                console.log(`  Retrying in 1 second...`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            }
+          } catch (chunkError) {
+            console.error(`  ✗ Error (attempt ${attempts}):`, chunkError.message);
+            if (attempts < maxAttempts) {
+              console.log(`  Retrying in 1 second...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        }
+        
+        if (!chunkText.trim()) {
+          console.error(`  ✗✗✗ FAILED: Chunk ${chunkNum} could not be transcribed after ${maxAttempts} attempts`);
+          // Add placeholder so we know something is missing
+          chunks.push(`[Chunk ${chunkNum} transcription failed]`);
         }
       }
       
-      transcribedText = chunks.join(' ');
-      console.log(`Transcription completed: ${chunks.length} chunks processed`);
+      // Deduplicate overlapping text from chunks
+      // The overlap causes words at boundaries to appear in multiple chunks
+      let deduplicatedText = chunks[0] || '';
+      
+      for (let i = 1; i < chunks.length; i++) {
+        const prevChunk = chunks[i - 1];
+        const currentChunk = chunks[i];
+        
+        if (!currentChunk || currentChunk.includes('transcription failed')) {
+          continue;
+        }
+        
+        // Find overlap: look for common words at the end of prev and start of current
+        // Simple approach: find the longest matching suffix/prefix
+        const prevWords = prevChunk.trim().split(/\s+/);
+        const currentWords = currentChunk.trim().split(/\s+/);
+        
+        // Try to find overlap (up to 10 words, roughly 2 seconds of speech)
+        let overlapLength = 0;
+        for (let len = Math.min(10, Math.min(prevWords.length, currentWords.length)); len > 0; len--) {
+          const prevSuffix = prevWords.slice(-len).join(' ');
+          const currentPrefix = currentWords.slice(0, len).join(' ');
+          
+          // Check if they match (case-insensitive, allow for punctuation differences)
+          const normalizedPrev = prevSuffix.toLowerCase().replace(/[^\w\s]/g, '');
+          const normalizedCurr = currentPrefix.toLowerCase().replace(/[^\w\s]/g, '');
+          
+          if (normalizedPrev === normalizedCurr && normalizedPrev.length > 5) {
+            overlapLength = len;
+            break;
+          }
+        }
+        
+        if (overlapLength > 0) {
+          // Remove overlapping words from current chunk
+          const newText = currentWords.slice(overlapLength).join(' ');
+          deduplicatedText += ' ' + newText;
+          console.log(`  Removed ${overlapLength} overlapping words between chunks ${i} and ${i+1}`);
+        } else {
+          // No clear overlap, just append
+          deduplicatedText += ' ' + currentChunk;
+        }
+      }
+      
+      transcribedText = deduplicatedText.trim();
+      const successfulChunks = chunks.filter(c => !c.includes('transcription failed')).length;
+      console.log(`\nTranscription completed: ${successfulChunks}/${totalChunks} chunks successful`);
+      
+      if (successfulChunks < totalChunks) {
+        console.warn(`⚠ WARNING: ${totalChunks - successfulChunks} chunks failed! Transcription may be incomplete.`);
+      }
+      
+      console.log(`Chunk lengths: ${chunks.map(c => c.length).join(', ')} chars`);
+      console.log(`After deduplication: ${transcribedText.length} chars (was ${chunks.join(' ').length})`);
     }
     
-    console.log(`Result: ${transcribedText.length} characters`);
-    console.log(`Text preview: ${transcribedText.substring(0, 100)}...`);
+    console.log(`\nFinal result: ${transcribedText.length} characters`);
+    console.log(`Text preview: ${transcribedText.substring(0, 200)}${transcribedText.length > 200 ? '...' : ''}`);
     
     return transcribedText;
   } catch (error) {
