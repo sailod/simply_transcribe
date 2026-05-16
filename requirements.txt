@@ -1,0 +1,5 @@
+sounddevice>=0.5
+pyperclip>=1.9
+requests>=2.32
+python-dotenv>=1.0
+pillow>=11.0

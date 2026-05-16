@@ -1,19 +1,19 @@
-[tool.poetry]
+[project]
 name = "simply-transcribe"
-version = "0.1.0"
-description = ""
-authors = ["Roi <roezairi@gmail.com>"]
-readme = "README.md"
+version = "0.2.0"
+description = "Record audio and transcribe it to clipboard — local or cloud"
+requires-python = ">=3.10"
+dependencies = [
+    "sounddevice>=0.5",
+    "pyperclip>=1.9",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+    "pillow>=11.0",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-pillow = "11.0.0"
-pyaudio = "0.2.14"
-pyperclip = "1.9.0"
-requests = "2.32.3"
-python-dotenv = "^1.0.1"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[project.optional-dependencies]
+openvino = [
+    "openvino-genai",
+    "librosa",
+    "soundfile",
+]
