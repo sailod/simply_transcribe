@@ -1,4 +1,9 @@
 import argparse
+import json
+import signal
+import socket
+import subprocess
+import sys
 import time
 import wave
 import requests
@@ -139,14 +144,135 @@ def transcribe_audio_huggingface(file_path):
         return None
 
 
+def _daemon_port_file(model_dir):
+    model_id = os.path.basename(os.path.realpath(model_dir).rstrip("/"))
+    return f"/tmp/simply-transcribe-{model_id}.port"
+
+
+def _daemon_pid_file(model_dir):
+    model_id = os.path.basename(os.path.realpath(model_dir).rstrip("/"))
+    return f"/tmp/simply-transcribe-{model_id}.pid"
+
+
+def _daemon_is_running(model_dir):
+    """Check if a daemon PID exists and process is alive. Cleans stale files."""
+    pid_file = _daemon_pid_file(model_dir)
+    if not os.path.exists(pid_file):
+        return False
+    try:
+        with open(pid_file) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError):
+        # Stale PID — clean up
+        port_file = _daemon_port_file(model_dir)
+        for f in (pid_file, port_file):
+            if os.path.exists(f):
+                os.remove(f)
+        return False
+
+
+def _daemon_ready(model_dir):
+    """Check if daemon is fully loaded and accepting connections."""
+    port_file = _daemon_port_file(model_dir)
+    if not os.path.exists(port_file):
+        return False
+    try:
+        with open(port_file) as f:
+            port = int(f.read().strip())
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect(("127.0.0.1", port))
+        sock.close()
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _stop_daemon(model_dir):
+    """Send SIGTERM to the daemon for this model.  Returns True if stopped."""
+    pid_file = _daemon_pid_file(model_dir)
+    port_file = _daemon_port_file(model_dir)
+    if not os.path.exists(pid_file):
+        return False
+    try:
+        with open(pid_file) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        os.kill(pid, signal.SIGTERM)
+        # Wait a moment for cleanup
+        time.sleep(0.5)
+        for f in (pid_file, port_file):
+            if os.path.exists(f):
+                os.remove(f)
+        return True
+    except OSError:
+        return False
+
+
+def _try_daemon(audio_path, port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(10)
+    try:
+        sock.connect(("127.0.0.1", port))
+        sock.sendall(audio_path.encode())
+        response = b""
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+        result = json.loads(response)
+        if "error" in result:
+            raise RuntimeError(result["error"])
+        return result["text"]
+    finally:
+        sock.close()
+
+
+def _start_daemon_background(model_dir, device):
+    if _daemon_is_running(model_dir):
+        return  # already serving this model
+
+    log_file = f"/tmp/simply-transcribe-{os.path.basename(os.path.realpath(model_dir).rstrip('/'))}.log"
+    log_fd = open(log_file, "a")
+    print(f"--- daemon starting at {time.strftime('%Y-%m-%d %H:%M:%S')} ---", file=log_fd, flush=True)
+
+    daemon_script = os.path.join(os.path.dirname(os.path.realpath(__file__)), "model_daemon.py")
+    subprocess.Popen(
+        [sys.executable, daemon_script, "--model-dir", model_dir, "--device", device],
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=log_fd,
+        stderr=log_fd,
+    )
+    # log_fd intentionally left open — daemon writes to it
+
+
 def transcribe_audio_openvino(file_path, model_dir=None, device=None):
+    model_dir = model_dir or OPENVINO_MODEL_DIR
+    device = device or OPENVINO_DEVICE
+
+    # Try existing daemon first
+    if _daemon_ready(model_dir):
+        try:
+            with open(_daemon_port_file(model_dir)) as f:
+                port = int(f.read().strip())
+            return _try_daemon(file_path, port)
+        except (ValueError, ConnectionRefusedError, OSError, json.JSONDecodeError):
+            pass  # daemon died mid-request
+
+    # Direct transcription
     import transcribe_openvino
     result = transcribe_openvino.transcribe(
-        file_path,
-        model_dir=model_dir or OPENVINO_MODEL_DIR,
-        device=device or OPENVINO_DEVICE,
+        file_path, model_dir=model_dir, device=device,
     )
     print(f"Transcribed Text: {result['text']}")
+
+    # Start daemon for next time
+    _start_daemon_background(model_dir, device)
+
     return result["text"]
 
 
@@ -177,7 +303,21 @@ def main():
         choices=["CPU", "GPU", "AUTO"],
         help=f"Inference device (default: {OPENVINO_DEVICE})",
     )
+    parser.add_argument(
+        "--stop-daemon",
+        action="store_true",
+        help="Stop the running OpenVINO model daemon and exit",
+    )
     args = parser.parse_args()
+
+    if args.stop_daemon:
+        model_dir = args.model_dir or OPENVINO_MODEL_DIR
+        if _daemon_is_running(model_dir):
+            _stop_daemon(model_dir)
+            print(f"Daemon for {model_dir} stopped.")
+        else:
+            print(f"No daemon running for {model_dir}.")
+        sys.exit(0)
 
     provider = args.provider
     model_dir = args.model_dir
