@@ -10,7 +10,12 @@ import requests
 import pyperclip
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 load_dotenv()
+
+CONFIG_FILE = Path.home() / ".config" / "simply_transcribe" / "shortcut.json"
+DEFAULT_SHORTCUT = "Escape"
+LOCK_FILE = "/tmp/simply_transcribe.lock"
 
 # Constants
 WAVE_OUTPUT_FILENAME = "output.wav"
@@ -30,11 +35,117 @@ class RecordingGUI:
         self.window = None
         self.status_label = None
         self.stop_button = None
+        self.settings_button = None
+        self.shortcut_label = None
+        self.shortcut_dialog = None
+        self._listening_for_shortcut = False
+        self._pending_shortcut = None
+
+    @staticmethod
+    def load_shortcut():
+        try:
+            if CONFIG_FILE.exists():
+                with open(CONFIG_FILE) as f:
+                    data = json.load(f)
+                    return data.get("shortcut", DEFAULT_SHORTCUT)
+        except Exception:
+            pass
+        return DEFAULT_SHORTCUT
+
+    @staticmethod
+    def save_shortcut(shortcut):
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CONFIG_FILE, "w") as f:
+            json.dump({"shortcut": shortcut}, f)
+
+    @staticmethod
+    def _build_combo(keysym, state):
+        """Build a shortcut string from Tkinter event keysym and state bitmask."""
+        modifiers = []
+        if state & 0x0004: modifiers.append("Ctrl")
+        if state & 0x0001: modifiers.append("Shift")
+        if state & 0x0008: modifiers.append("Alt")
+        if state & 0x0040: modifiers.append("Meta")
+
+        key = keysym
+        if key == "space": key = "Space"
+        elif len(key) == 1 and key.isalpha():
+            key = key.upper()
+
+        if modifiers:
+            return "+".join(modifiers) + "+" + key
+        return key
+
+    def _on_key(self, event):
+        if self._listening_for_shortcut and self.shortcut_dialog:
+            is_modifier = event.keysym in ("Control_L", "Control_R", "Alt_L",
+                                            "Alt_R", "Shift_L", "Shift_R",
+                                            "Meta_L", "Meta_R", "Super_L", "Super_R")
+            if not is_modifier:
+                self._pending_shortcut = self._build_combo(event.keysym, event.state)
+                self._close_shortcut_dialog(save=True)
+            return
+
+        if self.recording:
+            pressed = self._build_combo(event.keysym, event.state)
+            if pressed == self.load_shortcut():
+                self._on_stop()
 
     def update_status(self, text):
         if self.status_label:
             self.status_label.config(text=text)
             self.window.update()
+
+    def _open_shortcut_dialog(self):
+        import tkinter as tk
+
+        self._listening_for_shortcut = True
+        self._pending_shortcut = self.load_shortcut()
+
+        self.shortcut_dialog = tk.Toplevel(self.window)
+        self.shortcut_dialog.title("Set Stop Shortcut")
+        self.shortcut_dialog.geometry("300x210")
+        self.shortcut_dialog.resizable(False, False)
+        self.shortcut_dialog.transient(self.window)
+        self.shortcut_dialog.grab_set()
+        self.shortcut_dialog.protocol("WM_DELETE_WINDOW", lambda: self._close_shortcut_dialog(save=False))
+
+        tk.Label(
+            self.shortcut_dialog,
+            text="Press the key combination\nyou want to use to stop recording.",
+            font=("Arial", 10), fg="#555", justify="center",
+        ).pack(pady=(15, 10))
+
+        self.shortcut_display = tk.Label(
+            self.shortcut_dialog,
+            text=self._pending_shortcut,
+            font=("Arial", 14, "bold"), fg="#007AFF",
+            relief="solid", borderwidth=1, padx=20, pady=8,
+        )
+        self.shortcut_display.pack(pady=5)
+
+        tk.Label(
+            self.shortcut_dialog,
+            text="Press any key combo to save",
+            font=("Arial", 9), fg="#999",
+        ).pack(pady=(5, 3))
+
+        tk.Label(
+            self.shortcut_dialog,
+            text="Note: OS-level hotkeys that launch\nthis app cannot be captured here.",
+            font=("Arial", 8), fg="#c44",
+            wraplength=260,
+        ).pack(pady=(0, 10))
+
+    def _close_shortcut_dialog(self, save):
+        if save and self._pending_shortcut:
+            self.save_shortcut(self._pending_shortcut)
+            self.shortcut_label.config(text=f"Stop shortcut: {self._pending_shortcut}")
+        self._listening_for_shortcut = False
+        self._pending_shortcut = None
+        if self.shortcut_dialog:
+            self.shortcut_dialog.destroy()
+            self.shortcut_dialog = None
 
     def finish(self):
         if self.window:
@@ -56,7 +167,8 @@ class RecordingGUI:
 
         self.window = tk.Tk()
         self.window.title("Simply Transcribe")
-        self.window.geometry("240x130")
+        self.window.geometry("240x180")
+        self.window.protocol("WM_DELETE_WINDOW", self._on_stop)
 
         self.status_label = tk.Label(
             self.window, text="Recording...",
@@ -74,7 +186,22 @@ class RecordingGUI:
         style = ttk.Style()
         style.configure("Big.TButton", padding=10, font=("Arial", 12, "bold"))
 
-        self.stop_button.pack(expand=True, fill="both", padx=20, pady=(0, 15))
+        self.stop_button.pack(expand=True, fill="both", padx=20, pady=(0, 5))
+
+        self.shortcut_label = tk.Label(
+            self.window,
+            text=f"Stop shortcut: {self.load_shortcut()}",
+            font=("Arial", 9), fg="#999",
+        )
+        self.shortcut_label.pack()
+
+        self.settings_button = ttk.Button(
+            self.window, text="⚙ Configure Shortcut",
+            command=self._open_shortcut_dialog,
+        )
+        self.settings_button.pack(pady=(2, 10))
+
+        self.window.bind_all("<Key>", self._on_key)
 
         # Audio callback
         def callback(indata, frames, time, status):
@@ -99,6 +226,9 @@ class RecordingGUI:
 
     def _on_stop(self):
         import numpy as np
+
+        if not self.recording:
+            return
 
         self.recording = False
 
@@ -253,24 +383,32 @@ def _start_daemon_background(model_dir, device):
 def transcribe_audio_openvino(file_path, model_dir=None, device=None):
     model_dir = model_dir or OPENVINO_MODEL_DIR
     device = device or OPENVINO_DEVICE
+    t_total = time.time()
 
-    # Try existing daemon first
-    if _daemon_ready(model_dir):
+    daemon_running = _daemon_is_running(model_dir)
+    daemon_ready = _daemon_ready(model_dir)
+    print(f"[transcribe] daemon running={daemon_running} ready={daemon_ready}")
+
+    if daemon_ready:
         try:
             with open(_daemon_port_file(model_dir)) as f:
                 port = int(f.read().strip())
-            return _try_daemon(file_path, port)
-        except (ValueError, ConnectionRefusedError, OSError, json.JSONDecodeError):
-            pass  # daemon died mid-request
+            t_req = time.time()
+            result = _try_daemon(file_path, port)
+            print(f"[transcribe] daemon path | total={time.time() - t_total:.1f}s | request={time.time() - t_req:.1f}s")
+            return result
+        except (ValueError, ConnectionRefusedError, OSError, json.JSONDecodeError) as e:
+            print(f"[transcribe] daemon died mid-request ({type(e).__name__}: {e}), falling back to direct")
 
-    # Direct transcription
+    print("[transcribe] direct path (cold start)")
+    t_load = time.time()
     import transcribe_openvino
     result = transcribe_openvino.transcribe(
         file_path, model_dir=model_dir, device=device,
     )
+    print(f"[transcribe] direct path | total={time.time() - t_total:.1f}s | load+infer={time.time() - t_load:.1f}s")
     print(f"Transcribed Text: {result['text']}")
 
-    # Start daemon for next time
     _start_daemon_background(model_dir, device)
 
     return result["text"]
@@ -283,6 +421,15 @@ def transcribe_audio(file_path, provider="huggingface", model_dir=None, device=N
 
 
 def main():
+    import fcntl
+
+    try:
+        lock_fd = open(LOCK_FILE, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        print("Another instance is already running. Exiting.", file=sys.stderr)
+        sys.exit(0)
+
     parser = argparse.ArgumentParser(
         description="Record audio and transcribe it to clipboard."
     )
@@ -324,11 +471,25 @@ def main():
     device = args.device
     provider_label = "OpenVINO" if provider == "openvino" else "Hugging Face"
 
+    if provider == "openvino":
+        daemon_running = _daemon_is_running(model_dir)
+        daemon_ready = _daemon_ready(model_dir)
+        if daemon_running:
+            try:
+                with open(_daemon_pid_file(model_dir)) as f:
+                    pid = int(f.read().strip())
+                print(f"[main] daemon PID={pid} running={daemon_running} ready={daemon_ready}")
+            except Exception:
+                print(f"[main] daemon running={daemon_running} ready={daemon_ready}")
+        else:
+            print("[main] no daemon running — will cold start")
+
     recorder = RecordingGUI()
     recorder.start_recording()
 
     recorder.update_status(f"Transcribing ({provider_label})...")
 
+    t_transcribe = time.time()
     try:
         transcribed_text = transcribe_audio(
             WAVE_OUTPUT_FILENAME, provider=provider,
@@ -340,6 +501,8 @@ def main():
         recorder.finish()
         cleanup(WAVE_OUTPUT_FILENAME)
         return
+
+    print(f"[main] transcription total time: {time.time() - t_transcribe:.1f}s")
 
     if transcribed_text:
         pyperclip.copy(transcribed_text)

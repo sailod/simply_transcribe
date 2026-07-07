@@ -137,12 +137,7 @@ def main():
             dur = len(audio) / sr
             log(f"request #{request_num} | {audio_path} | {dur:.0f}s | generating...")
 
-            try:
-                result = pipeline.generate(audio.tolist(), return_timestamps=True)
-            except Exception as gen_err:
-                log(f"GENERATE FAILED: {gen_err}")
-                log(traceback.format_exc())
-                raise
+            result = pipeline.generate(audio.tolist(), return_timestamps=True)
 
             response = {"text": str(result).strip()}
 
@@ -162,6 +157,15 @@ def main():
                 conn.sendall(json.dumps({"error": str(e)}).encode())
             except Exception:
                 pass
+
+            if "GPU" in str(e) or "OpenCL" in str(e) or "clWaitForEvents" in str(e):
+                log("GPU error detected — reloading pipeline...")
+                try:
+                    pipeline = openvino_genai.WhisperPipeline(args.model_dir, device=args.device)
+                    log("Pipeline reloaded successfully.")
+                except Exception as reload_err:
+                    log(f"Pipeline reload failed: {reload_err}")
+                    log(traceback.format_exc())
         finally:
             conn.close()
 
